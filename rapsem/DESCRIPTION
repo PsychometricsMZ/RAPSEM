@@ -1,0 +1,19 @@
+Package: rapsem
+Title: Rank-Preserving Structural Equation Modeling
+Version: 0.0.0.1000
+Authors@R: 
+    person("Sofia", "Morelli", , "sofia.morelli@uni-tuebingen.de", role = c("aut", "cre"))
+Description: This package provides tools for the estimation of latent mediation effects using factor scores and g-estimation. It allows users to perform mediation analysis of a randomized controlled trial including latent variables with model specification in lavaan syntax.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+    R6,
+    lavaan (>= 0.6-12),
+    stats
+Suggests: 
+    testthat (>= 3.0.0)
+Depends:
+    R (>= 4.4.0)
+Config/testthat/edition: 3

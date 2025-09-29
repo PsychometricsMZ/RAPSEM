@@ -1,0 +1,6 @@
+treatment_name <- "treat"
+covariate_name <- "cov"
+confounder_name <- "conf"
+mediator_name <- "med"
+outcome_name <- "out"
+indicator_name <- "ind"
