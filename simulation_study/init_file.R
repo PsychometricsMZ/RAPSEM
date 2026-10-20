@@ -3,19 +3,19 @@ output_file <- args[1]
 
 column_names <- data.frame(
   method = character(),
-  confounding = numeric(),
-  effect_modification = numeric(),
-  num_obs = integer(),
-  reliability = numeric(),
-  beta_mxr = numeric(),
-  beta_ym = numeric(),
+  variable = character(),
   mean = numeric(),
   sd = numeric(),
   lower_pct = numeric(),
   upper_pct = numeric(),
   p_value = numeric(),
   significance = logical(),
-  bias = numeric(),
+  num_obs = integer(),
+  true_theta_m = numeric(),
+  interaction = numeric(),
+  confounding = numeric(),
+  conf_med = numeric(),
+  reliability = numeric(),
   stringsAsFactors = FALSE
 )
 

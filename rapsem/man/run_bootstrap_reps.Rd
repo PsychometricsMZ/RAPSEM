@@ -11,7 +11,10 @@ run_bootstrap_reps(
   data_info,
   modified_2smm,
   tau,
-  add_var
+  add_var,
+  orthogonal,
+  blockwise = FALSE,
+  standardize = FALSE
 )
 }
 \arguments{
@@ -29,6 +32,12 @@ run_bootstrap_reps(
 
 \item{add_var}{Numeric. Small variance value added to improve
 stability in g-estimation.}
+
+\item{orthogonal}{Boolean. Whether to use orthogonalized factor scores.}
+
+\item{blockwise}{Boolean. Whether to fit the measurement blocks separately.}
+
+\item{standardize}{Boolean. Whether to use the standardized metric.}
 }
 \value{
 A list containing the results

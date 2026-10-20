@@ -30,6 +30,8 @@ the (latent) target variable}
 \item{\code{vec_m2}}{Regression vector factor score corrections.}
 
 \item{\code{parameters}}{Estimated regression parameters.}
+
+\item{\code{sensitivity_param}}{Condition number}
 }
 \if{html}{\out{</div>}}
 }

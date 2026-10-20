@@ -95,3 +95,22 @@ test_that("reg_model adds main effects for interaction terms and warns", {
   expect_true(all(c("intercept", "cov1", "cov2", "cov1:cov2")
                   %in% model$out_preds$out))
 })
+
+test_that("reg_model adds a main effect listed only in another equation", {
+  reg_lines <- c("med ~ treat + cov1 + treat:cov1",
+                 "out ~ treat + med + treat:cov1")
+  expect_warning(
+    model <- reg_model$new(reg_lines, intercept_name = "intercept"),
+    "Main effect cov1 added as predictor because interaction treat:cov1"
+  )
+  expect_true("cov1" %in% model$out_preds$out)
+})
+
+test_that("reg_model does not warn when main effects are on other lines", {
+  reg_lines <- c("med ~ treat:cov1", "med ~ treat", "med ~ cov1")
+  expect_no_warning(
+    model <- reg_model$new(reg_lines, intercept_name = "intercept")
+  )
+  expect_setequal(model$out_preds$med,
+                  c("intercept", "treat:cov1", "treat", "cov1"))
+})

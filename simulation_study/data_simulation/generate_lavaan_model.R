@@ -1,5 +1,5 @@
 library(here)
-source(here::here("data_simulation", "name_settings.R"))
+source(here::here("simulation_study/data_simulation", "name_settings.R"))
 
 generate_lavaan_model <- function(coef) {
   model_lines <- c()

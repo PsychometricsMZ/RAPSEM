@@ -1,0 +1,4 @@
+# shell scripts and Nix files run in WSL/Linux: always LF line endings
+*.sh text eol=lf
+*.nix text eol=lf
+.envrc text eol=lf

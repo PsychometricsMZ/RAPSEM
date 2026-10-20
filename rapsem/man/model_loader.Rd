@@ -23,6 +23,9 @@ representing CFA components.}
 
 \item{\code{reg}}{An instance of the \code{reg_model} class
 representing regression components.}
+
+\item{\code{group_lavaan}}{A character string containing
+lavaan syntax for group-specific estimation.}
 }
 \if{html}{\out{</div>}}
 }
@@ -64,7 +67,8 @@ Validates the lavaan model text syntax and checks for variables
 not present in the data.
 Separates lavaan syntax lines into CFA and regression components.
 Trims and splits the model text into individual non-empty lines.
-Checks that a lavaan submodel component is present.}
+Checks that a lavaan submodel component is present.
+Transforms original lavaan syntax to group-specific syntax.}
 }
 \if{html}{\out{</div>}}
 }

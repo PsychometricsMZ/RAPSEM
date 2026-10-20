@@ -26,6 +26,8 @@ reg_param_estimator <- R6Class("reg_param_estimator",
     vec_m2 = NULL,
     #' @field parameters Estimated regression parameters.
     parameters = NULL,
+    #' @field sensitivity_param Condition number
+    sensitivity_param = NULL,
 
     #' @description
     #' Initialize the regression parameter estimator.
@@ -43,7 +45,9 @@ reg_param_estimator <- R6Class("reg_param_estimator",
       all_values[] <- mapply(function(var_name, vals) {
         private$center_if_necessary(var_name, vals,
                                     var_names$treatment,
-                                    var_names$intercept)
+                                    var_names$intercept,
+                                    factor_scores$names,
+                                    isTRUE(factor_scores$standardized))
       }, var_name = colnames(all_values), vals = all_values, SIMPLIFY = FALSE)
       target <- matrix(all_values[, target_name], ncol = 1)
       colnames(target) <- target_name
@@ -57,7 +61,7 @@ reg_param_estimator <- R6Class("reg_param_estimator",
                                             all_values,
                                             target_name,
                                             factor_scores$names,
-                                            factor_scores$sigma,
+                                            correction_sigma(factor_scores),
                                             predictor_names)
       self$predictors <- results$preds
       self$mat_m1 <- results$mat1
@@ -75,17 +79,20 @@ reg_param_estimator <- R6Class("reg_param_estimator",
     #'                to improve stability (Ridge regularization). Default is 0.
     #' @return Regression coefficients.
     regress = function(modified_2smm, tau, add_var = 0) {
-      params <- private$perform_regression(self$mat_m1,
-                                           self$vec_m1,
-                                           self$mat_m2,
-                                           self$vec_m2,
-                                           self$target,
-                                           self$var_target_error,
-                                           modified_2smm,
-                                           tau,
-                                           add_var)
+      results <- private$perform_regression(self$mat_m1,
+                                            self$vec_m1,
+                                            self$mat_m2,
+                                            self$vec_m2,
+                                            self$target,
+                                            self$var_target_error,
+                                            modified_2smm,
+                                            tau,
+                                            add_var)
+      self$sensitivity_param <- results$condition_number
+      params <- results$params
       names(params) <- colnames(self$predictors)
       self$parameters <- params
+      c(params, sensitivity = results$condition_number)
     }
   ),
 
@@ -96,62 +103,86 @@ reg_param_estimator <- R6Class("reg_param_estimator",
     #' the `MASS` package if the matrix is singular.
     perform_regression = function(mat_m1, vec_m1, mat_m2, vec_m2, target,
                                   var_err, modified_2smm, tau, add_var) {
-      moments <- private$modify_moments(mat_m1, vec_m1, mat_m2, vec_m2, target,
-                                        var_err, modified_2smm, tau)
-      mat_m <- moments$mat
+      factor <- private$get_factor_to_modify_moments(mat_m1, vec_m1,
+                                                     mat_m2, vec_m2,
+                                                     target, var_err,
+                                                     modified_2smm, tau)
+      mat_m <- mat_m1 + factor * mat_m2
+      vec_m <- vec_m1 + factor * vec_m2
       mat_m <- mat_m + diag(add_var, nrow(mat_m), ncol(mat_m))
-      vec_m <- moments$vec
-      params <- tryCatch({
-        solve(mat_m, vec_m)
-      }, error = function(e) {
-        warning("Using ginv due to singular matrix.")
-        if (!requireNamespace("MASS", quietly = TRUE)) {
-          stop("The 'MASS' package is required but not installed.")
-        }
-        MASS::ginv(mat_m) %*% vec_m
-      })
-      return(params)
+      cond_number <- kappa(mat_m, exact = TRUE)
+      params <- MASS::ginv(mat_m) %*% vec_m
+      list(
+        params = params,
+        condition_number = cond_number
+      )
     },
 
 
-    modify_moments = function(mat_m1, vec_m1, mat_m2, vec_m2, target,
-                              var_err, modified_2smm, tau) {
-      factor <- 1
-      if (modified_2smm) {
+    #' Factor that scales the moment correction in the modified 2SMM
+    #' estimator of Wall and Amemiya (2000, eqs. 23-24): gamma is the largest
+    #' eigenvalue of R1^(-1) R2 (= R1^(-1/2) R2 R1^(-1/2) for symmetric R1; see
+    #' largest_relative_eigenvalue for the g-estimation system). The full
+    #' correction (1 - tau/n)
+    #' is used if 1/gamma >= 1 + 1/n, otherwise it is shrunk to
+    #' 1/gamma - 1/n - tau/n. The factor is therefore at most 1 and does not
+    #' depend on (non-singular) recodings of the predictors.
+    get_factor_to_modify_moments = function(mat_m1, vec_m1,
+                                            mat_m2, vec_m2, target,
+                                            var_err, modified_2smm, tau) {
+      if (!(modified_2smm) || is.null(tau) || is.nan(tau) || tau == 0) {
+        1
+      } else {
         r1 <- rbind(
           cbind(mat_m1, vec_m1),
           cbind(t(vec_m1), mean(target^2))
         )
         r2 <- rbind(
           cbind(-mat_m2, -vec_m2),
-          cbind(t(vec_m2), var_err)
+          cbind(-t(vec_m2), var_err)
         )
-        r1_inv <- MASS::ginv(r1)
-        eig <- eigen(r1_inv %*% r2 %*% t(r1_inv), only.values = TRUE)$values
-        lambda_max <- max(Re(eig))
+        gamma_hat <- private$largest_relative_eigenvalue(r1, r2)
+        inv_gamma <- if (gamma_hat <= 0) Inf else 1 / gamma_hat
         num_obs <- length(target)
-        if (lambda_max >= (1 + 1 / num_obs)) {
-          factor <- 1 - tau / num_obs
+        if (inv_gamma >= (1 + 1 / num_obs)) {
+          1 - tau / num_obs
         } else {
-          factor <- 1 / lambda_max - 1 / num_obs - tau / num_obs
+          inv_gamma - 1 / num_obs - tau / num_obs
         }
       }
-      mat_m <- mat_m1 + factor * mat_m2
-      vec_m <- vec_m1 + factor * vec_m2
-      return(list(mat = mat_m, vec = vec_m))
+    },
+
+    #' Largest (real part of the) eigenvalue of R1^(-1) R2. For a symmetric
+    #' R1 this equals the largest eigenvalue of R1^(-1/2) R2 R1^(-1/2) used by
+    #' Wall and Amemiya (2000). In g-estimation the treatment and mediator rows
+    #' of R1 are replaced by instrument conditions, so R1 is not symmetric and
+    #' only the general form is defined. Falls back to the generalized
+    #' inverse if R1 is singular.
+    largest_relative_eigenvalue = function(r1, r2) {
+      rel <- tryCatch(solve(r1, r2), error = function(e) MASS::ginv(r1) %*% r2)
+      max(Re(eigen(rel, only.values = TRUE)$values))
     },
 
     #' Center values if necessary (if variable is not
-    #' a treatment or intercept and not binary).
+    #' a treatment or intercept and not binary). With standardize = TRUE,
+    #' observed variables are also scaled to unit variance; factor scores are
+    #' only centered, because they are then already in the latent-standardized
+    #' metric of their error covariance (see factor_score_estimator).
     center_if_necessary = function(var_name, vals,
                                    treatment_names,
-                                   intercept_name) {
+                                   intercept_name,
+                                   factor_names = character(),
+                                   standardize = FALSE) {
       if (!(var_name %in% treatment_names
             || var_name == intercept_name) &&
             (length(unique(vals)) > 2)) {
-        return(scale(vals))
+        if (standardize && !(var_name %in% factor_names)) {
+          scale(vals)
+        } else {
+          vals - mean(vals)
+        }
       } else {
-        return(vals)
+        vals
       }
     },
 
@@ -175,9 +206,9 @@ reg_param_estimator <- R6Class("reg_param_estimator",
         pred_name <- predictor_names[i]
         if (grepl(":", pred_name)) {
           parts <- strsplit(pred_name, ":")[[1]]
-          values1 <- row_values[, parts[1]]
-          values2 <- row_values[, parts[2]]
-          predictors[, pred_name] <- values1 * values2
+          predictors[, pred_name] <- Reduce(`*`, lapply(parts, function(p) {
+            row_values[, p]
+          }))
         } else {
           predictors[, pred_name] <- row_values[, pred_name]
         }

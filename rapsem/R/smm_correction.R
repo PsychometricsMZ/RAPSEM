@@ -31,6 +31,38 @@ create_correction_element <- function(var_1, vals_1, var_2, vals_2,
                                    factor_names, sigma_ee))
 }
 
+#' @title Factor Score Error Covariance Entry
+#' @description
+#' Element (var_1, var_2) of the factor score error covariance: a scalar for
+#' a matrix, or a vector over observations for an array of row-specific
+#' covariances (observations x factors x factors, missing indicator data).
+#' @param sigma_ee Matrix or array of factor score error covariances.
+#' @param var_1,var_2 Factor names.
+#' @return Numeric scalar or vector.
+#' @keywords internal
+sigma_entry <- function(sigma_ee, var_1, var_2) {
+  if (length(dim(sigma_ee)) == 3) {
+    sigma_ee[, var_1, var_2]
+  } else {
+    sigma_ee[var_1, var_2]
+  }
+}
+
+#' @title Error Covariance Used in the Moment Corrections
+#' @description
+#' Row-specific error covariances if the factor scores have them (missing
+#' indicator data), otherwise the common error covariance matrix.
+#' @param factor_scores An instance of `factor_score_estimator`.
+#' @return Matrix or array of factor score error covariances.
+#' @keywords internal
+correction_sigma <- function(factor_scores) {
+  if (is.null(factor_scores$sigma_rows)) {
+    factor_scores$sigma
+  } else {
+    factor_scores$sigma_rows
+  }
+}
+
 #' @title Handle Main Effect
 #' @description
 #' Calculates the corrected vector for a pair of main effect variables.
@@ -50,7 +82,7 @@ handle_main_effect <- function(var_1, vals_1, var_2, vals_2,
   if (var_1 %in% factor_names && var_2 %in% factor_names) {
     return(
       list(val = vals_1[, var_1] * vals_2[, var_2],
-           corr = - sigma_ee[var_1, var_2])
+           corr = - sigma_entry(sigma_ee, var_1, var_2))
     )
   } else {
     return(
@@ -77,7 +109,7 @@ extract_interaction_parts <- function(inter, factor_names) {
     stop(paste("Interaction'", inter,
                "can only contain one latent variable."))
   }
-  return(list(latent = latent, observed = observed))
+  list(latent = latent, observed = observed)
 }
 
 #' @title Handle Interaction
@@ -103,7 +135,8 @@ handle_interaction <- function(inter, vals_inter, single, vals_single,
     return(
       list(val = product_observed * vals_inter[, parts$latent]
            * vals_single[, single],
-           corr = - product_observed * sigma_ee[parts$latent, single])
+           corr = - product_observed *
+             sigma_entry(sigma_ee, parts$latent, single))
     )
   } else if (length(parts$latent) == 1) {
     return(
@@ -146,7 +179,7 @@ handle_double_interaction <- function(var_1, vals_1,
       list(val = product_observed_1 * product_observed_2
            * vals_1[, parts_1$latent] * vals_2[, parts_2$latent],
            corr = - product_observed_1 * product_observed_2
-           * sigma_ee[parts_1$latent, parts_2$latent])
+           * sigma_entry(sigma_ee, parts_1$latent, parts_2$latent))
     )
   } else if (length(parts_1$latent) == 1) {
     return(

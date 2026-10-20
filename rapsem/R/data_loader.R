@@ -68,16 +68,17 @@ data_loader <- R6Class("data_loader",
       if (!all(sapply(input_data, is.numeric))) {
         stop("All columns in input_data must be numeric.")
       }
-      return(input_data)
+      input_data
     },
 
     #' Validates that treatment variables have binary format.
     validate_treatment_vars = function(input_data, treatment_names) {
       non_binary <- sapply(input_data[treatment_names], function(col) {
-        !all(col %in% c(0, 1))
+        vals <- unique(na.omit(col))
+        !(is.numeric(col) && length(vals) == 2)
       })
       if (any(non_binary)) {
-        stop(paste("Treatment columns must contain only 0 or 1.",
+        stop(paste("Treatment columns must contain exactly two distinct values.",
                    "Invalid columns:",
                    paste(names(non_binary)[non_binary], collapse = ", ")))
       }
@@ -86,7 +87,7 @@ data_loader <- R6Class("data_loader",
     # Generates bootstrap samples
     generate_bootstrap_samples = function(n_bootstrap) {
       if (n_bootstrap == 0) {
-        return(list())
+        list()
       }
       num_obs <- nrow(self$original_data)
       boot_samples <- vector("list", n_bootstrap)
@@ -97,7 +98,7 @@ data_loader <- R6Class("data_loader",
         colnames(sample) <- colnames(self$original_data)
         boot_samples[[i]] <- sample
       }
-      return(boot_samples)
+      boot_samples
     }
   )
 )

@@ -2,21 +2,23 @@
 % Please edit documentation in R/med_est.R
 \name{summarize_results}
 \alias{summarize_results}
-\title{Summarize Bootstrap Estimation Results}
+\title{Summarize Bootstrap Estimation Results by Outcome}
 \usage{
-summarize_results(results_list)
+summarize_results(results_list, param_names)
 }
 \arguments{
 \item{results_list}{List of named numeric vectors containing
 parameter estimates from bootstrap replicates.}
+
+\item{param_names}{Character vector of parameter names.}
 }
 \value{
-A data.frame with columns Estimate, Std.Err, 2.5\% percentile,
-97.5\% percentile, z value, P(>|z|), and Signif for each parameter.
+A named list of data.frames (one per outcome) containing
+Estimate, Std.Err, 2.5\%, 97.5\%, z value, and P(>|z|).
 }
 \description{
-Aggregates bootstrap replicate results by calculating means,
-standard errors, z-values, p-values, bootstrap percentiles, and
-adds significance stars for each parameter.
+Aggregates bootstrap replicate results separately for each outcome.
+Calculates means, standard errors, z-values, p-values, and bootstrap
+percentiles for each parameter within each outcome.
 }
 \keyword{internal}

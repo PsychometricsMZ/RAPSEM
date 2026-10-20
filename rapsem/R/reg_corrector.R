@@ -33,8 +33,10 @@ reg_corrector <- R6Class("reg_corrector",
       if (!any(treat_names %in% out_pred_names)) {
         stop("At least one treatment must be included as a predictor.")
       }
+      # work on a copy: the moment rows are replaced by instrument rows, and
+      # the caller's (standard) estimator must stay unchanged
       corr_reg_est <- private$correct_regression(out_pred_names,
-                                                 reg_est,
+                                                 reg_est$clone(),
                                                  reg_model,
                                                  sample,
                                                  var_names,
@@ -58,10 +60,9 @@ reg_corrector <- R6Class("reg_corrector",
         {
           tryCatch(
             {
-              result <- self$corrected_reg_estimator$regress(modified_2smm,
-                                                             tau,
-                                                             add_var)
-              return(result)
+              return(self$corrected_reg_estimator$regress(modified_2smm,
+                                                          tau,
+                                                          add_var))
             },
             error = function(e) {
               stop(paste0("Error during g_estimation: ", e$message),
@@ -120,12 +121,23 @@ reg_corrector <- R6Class("reg_corrector",
           }
         }
       }
-      return(reg_est)
+      reg_est
+    },
+
+    #' For an interaction term containing the treatment as one of its parts
+    #' (exact match), returns the remaining parts joined by ":"; otherwise
+    #' NULL.
+    interaction_partner = function(term, treat_name) {
+      parts <- strsplit(term, ":", fixed = TRUE)[[1]]
+      if (length(parts) < 2 || !(treat_name %in% parts)) {
+        return(NULL)
+      }
+      paste(setdiff(parts, treat_name), collapse = ":")
     },
 
     #' Applies centering to treatment variables.
     correct_treatment = function(treat_vals) {
-      return(treat_vals - mean(treat_vals))
+      treat_vals - mean(treat_vals)
     },
 
     #' Computes the corrected entries for treatment predictors.
@@ -134,24 +146,22 @@ reg_corrector <- R6Class("reg_corrector",
       vals <- setNames(rep(0, ncol(out_vars)), colnames(out_vars))
       corrs <- setNames(rep(0, ncol(out_vars)), colnames(out_vars))
       treat_corrected <- private$correct_treatment(out_vars[, treat_name])
+      other_pred <- private$interaction_partner(pred_name, treat_name)
       if (pred_name == treat_name) {
         for (pred in colnames(out_vars)) {
           vals[pred] <- mean(treat_corrected * out_vars[, pred])
         }
-      } else if (grepl(paste0(treat_name, ":"), pred_name)
-                 || grepl(paste0(":", treat_name), pred_name)) {
-        other_pred <- gsub(paste0("(:?", treat_name, ":?)"), "", pred_name)
+      } else if (!is.null(other_pred)) {
         for (pred in colnames(out_vars)) {
           pred_el <- create_correction_element(
             pred, out_vars, other_pred, out_vars,
-            factor_scores$names, factor_scores$sigma
+            factor_scores$names, correction_sigma(factor_scores)
           )
           vals[pred] <- mean(treat_corrected * pred_el$val)
           corrs[pred] <- mean(treat_corrected * pred_el$corr)
         }
       }
-      return(list(vals = vals,
-                  corrs = corrs))
+      list(vals = vals, corrs = corrs)
     },
 
     #' Computes the corrected entries for mediator predictors.
@@ -170,6 +180,7 @@ reg_corrector <- R6Class("reg_corrector",
       for (i in seq_along(med_pred_names)) {
         med_pred_name <- med_pred_names[i]
         for (treat_name in name_config$treatment) {
+          other_pred <- private$interaction_partner(med_pred_name, treat_name)
           if (treat_name == med_pred_name) {
             treat_corrected <- private$correct_treatment(
               med_est$predictors[, treat_name]
@@ -178,17 +189,14 @@ reg_corrector <- R6Class("reg_corrector",
               val <- gamma[i] * treat_corrected * out_vars[, pred]
               vals[, pred] <- vals[, pred] + val
             }
-          } else if (grepl(paste0(treat_name, ":"), med_pred_name)
-                     || grepl(paste0(":", treat_name), med_pred_name)) {
+          } else if (!is.null(other_pred)) {
             treat_corrected <- private$correct_treatment(
               med_est$predictors[, treat_name]
             )
-            other_pred <- gsub(paste0("(:?", treat_name, ":?)"), "",
-                               med_pred_name)
             for (pred in colnames(out_vars)) {
               pred_el <- create_correction_element(
                 pred, out_vars, other_pred, med_est$predictors,
-                factor_scores$names, factor_scores$sigma
+                factor_scores$names, correction_sigma(factor_scores)
               )
               val <- gamma[i] * treat_corrected * pred_el$val
               vals[, pred] <- vals[, pred] + val
@@ -198,8 +206,8 @@ reg_corrector <- R6Class("reg_corrector",
           }
         }
       }
-      return(list(vals = apply(vals, 2, mean),
-                  corrs = apply(corrs, 2, mean)))
+      list(vals = apply(vals, 2, mean),
+           corrs = apply(corrs, 2, mean))
     }
   )
 )

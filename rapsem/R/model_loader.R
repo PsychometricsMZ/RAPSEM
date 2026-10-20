@@ -19,6 +19,9 @@ model_loader <- R6Class("model_loader",
     #' @field reg An instance of the `reg_model` class
     #' representing regression components.
     reg = NULL,
+    #' @field group_lavaan A character string containing
+    #'        lavaan syntax for group-specific estimation.
+    group_lavaan = NULL,
 
     #' @description
     #' Initialize the model_loader object.
@@ -41,6 +44,8 @@ model_loader <- R6Class("model_loader",
                                                      "reg")
         self$cfa <- cfa_class$new(cfa_txt)
         self$reg <- reg_class$new(reg_txt, var_names$intercept)
+        self$group_lavaan <- private$create_group_lavaan(lavaan_text,
+                                                         var_names$treatment)
       }, error = function(e) {
         stop("Error initializing model_loader: ", e$message)
       })
@@ -64,40 +69,68 @@ model_loader <- R6Class("model_loader",
         lavaanify(model_text),
         error = function(e) stop("Invalid lavaan model syntax: ", e$message)
       )
-      model_vars <- lavNames(model_parsed, type = "ov")
+      # lavaan lists interactions of two observed variables (e.g. treat:z)
+      # as a single "observed variable"; validate their parts instead.
+      model_vars <- unique(unlist(strsplit(lavNames(model_parsed,
+                                                    type = "ov"), ":")))
       missing_vars <- setdiff(model_vars, all_var_names)
       if (length(missing_vars) > 0) {
         stop("Variables in model not found in data: ",
              paste(missing_vars, collapse = ", "))
       }
-      return(model_text)
+      model_text
     },
 
     #' Separates lavaan syntax lines into CFA and regression components.
     split_lavaan_txt = function(model_text) {
       lines <- private$split_txt_into_lines(model_text)
       cfa_lines <- c()
+      covariance_lines <- c()
       regression_lines <- c()
       for (line in lines) {
         if (grepl("=~", line)) {
           cfa_lines <- c(cfa_lines, line)
+        } else if (grepl("~~", line)) {
+          covariance_lines <- c(covariance_lines, line)
+        } else if (grepl("~\\s*1\\s*$", line)) {
+          warning(paste("Intercept line", line, "not used by RAPSEM."))
         } else if (grepl("~", line)) {
           regression_lines <- c(regression_lines, line)
         } else {
           warning(paste("Line", line, "not considered."))
         }
       }
-      return(list(cfa = cfa_lines, reg = regression_lines))
+      # Residual covariances between indicators belong to the measurement
+      # model; other covariances are not used by RAPSEM.
+      indicators <- if (length(cfa_lines) > 0) {
+        unique(unlist(lapply(cfa_lines, function(l) {
+          trimws(strsplit(sub(".*=~", "", l), "\\+")[[1]])
+        })))
+      } else {
+        character()
+      }
+      for (line in covariance_lines) {
+        vars <- trimws(unlist(strsplit(line, "~~|\\+")))
+        if (all(vars %in% indicators)) {
+          cfa_lines <- c(cfa_lines, line)
+        } else {
+          warning(paste("Covariance line", line, "not used by RAPSEM",
+                        "(only residual covariances between indicators",
+                        "are supported)."))
+        }
+      }
+      list(cfa = cfa_lines, reg = regression_lines)
     },
 
-    #' Trims and splits the model text into individual non-empty lines.
+    #' Trims and splits the model text into individual non-empty lines,
+    #' dropping comments.
     split_txt_into_lines = function(text) {
       if (!is.character(text) || length(text) != 1) {
         stop("Input must be a single character string.")
       }
       lines <- unlist(strsplit(text, "\n"))
-      lines <- trimws(lines)
-      return(lines[lines != ""])
+      lines <- trimws(sub("#.*$", "", lines))
+      lines[lines != ""]
     },
 
     #' Checks that a lavaan submodel component is present.
@@ -105,7 +138,55 @@ model_loader <- R6Class("model_loader",
       if (length(component_txt) == 0) {
         stop(paste(type, "component missing in lavaan model."))
       }
-      return(component_txt)
+      component_txt
+    },
+
+    #' Transforms original lavaan syntax to group-specific syntax.
+    create_group_lavaan = function(syntax, treatment_names,
+                                   treatment_levels = c("0", "1")) {
+      lines <- readLines(textConnection(syntax))
+      measurement_lines <- c()
+      reg_terms <- list()
+      for (line in lines) {
+        line <- trimws(sub("#.*$", "", line))
+        if (line == "") next
+        if (grepl("=~", line) || grepl("~~", line)) {
+          measurement_lines <- c(measurement_lines, line)
+          next
+        }
+        if (grepl("~\\s*1\\s*$", line)) next
+        if (grepl("~", line)) {
+          parts <- strsplit(line, "~")[[1]]
+          lhs <- trimws(parts[1])
+          rhs <- trimws(parts[2])
+          rhs_vars <- trimws(strsplit(rhs, "\\+")[[1]])
+          for (tr in treatment_names) {
+            rhs_vars <- gsub(paste0("^", tr, ":"), "", rhs_vars)
+            rhs_vars <- gsub(paste0(":", tr, "$"), "", rhs_vars)
+          }
+          rhs_vars <- rhs_vars[!rhs_vars %in% treatment_names]
+          rhs_vars <- rhs_vars[rhs_vars != ""]
+          if (length(rhs_vars) > 0) {
+            reg_terms[[lhs]] <- unique(c(reg_terms[[lhs]], rhs_vars))
+          }
+        }
+      }
+      reg_lines <- c()
+      for (lhs in names(reg_terms)) {
+        vars <- reg_terms[[lhs]]
+        formatted_paths <- sapply(vars, function(v) {
+          labels <- sapply(treatment_levels, function(level) {
+            paste0("p_", lhs, "_", v, "_", level)
+          })
+          paste0("c(", paste(labels, collapse = ", "), ")*", v)
+        })
+        reg_lines <- c(
+          reg_lines,
+          paste0(lhs, " ~ ", paste(formatted_paths, collapse = " + "))
+        )
+      }
+      final_syntax <- c(measurement_lines, reg_lines)
+      paste(final_syntax, collapse = "\n")
     }
   )
 )

@@ -1,2 +1,37 @@
+# The only .gitignore of the repository.
+
+# Editor, Python and R session files
 .Rhistory
+.Rproj.user/
 .venv
+.vscode
+**/__pycache__
+test.R
+
+# Generated figures and tables (rebuild with the plotting / table scripts)
+**/plots
+**/tables
+**/old
+
+# Logs
+logs/
+*.log
+# SLURM output; the directory itself is kept (the jobs need it to exist)
+simulation_study/slurm_logs/*
+!simulation_study/slurm_logs/.gitkeep
+
+# Per-cell intermediate files of the simulation (merged into the result CSVs
+# by merge_results.sh)
+simulation_study/results/cells/
+
+# R CMD check output
+*.Rcheck/
+
+# Nix (see gen-env.R / default.nix)
+result
+result-image
+
+# Container image for cluster deployment (see docker-image.nix) -- rebuild,
+# do not commit
+*.sif
+image.tar

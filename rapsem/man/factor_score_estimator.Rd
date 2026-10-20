@@ -12,7 +12,8 @@ Takes a \code{cfa_model} object and a data sample as input, uses the lavaan
 \code{cfa} function with MLR estimation to fit the CFA model to the data
 and computes the factor scores as well as the the error covariance matrix
 based on extracted intercepts, loadings, and residual variances with
-a method of  moments approach.
+a method of  moments approach. McDonald's omega reliability coefficients
+are also computed per latent factor.
 }
 \keyword{internal}
 \section{Public fields}{
@@ -23,6 +24,9 @@ a method of  moments approach.
 \item{\code{vals}}{Matrix of computed factor scores for each observation.}
 
 \item{\code{sigma}}{Covariance matrix of factor score estimation errors.}
+
+\item{\code{reliability}}{Named numeric vector of McDonald's omega reliability
+coefficients (one per latent factor)}
 }
 \if{html}{\out{</div>}}
 }
@@ -40,7 +44,7 @@ a method of  moments approach.
 Initializes a \code{factor_score_estimator} object and computes factor scores
 from a CFA model and data sample.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{factor_score_estimator$new(cfa_model, data_sample)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{factor_score_estimator$new(cfa_model, data_sample, orthogonal)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -49,8 +53,11 @@ from a CFA model and data sample.
 \item{\code{cfa_model}}{An instance of \code{cfa_model} defining the
 factor structure.}
 
-\item{\code{data_sample}}{A data frame containing observed indicator values.
+\item{\code{data_sample}}{A data frame containing observed indicator values.}
+
+\item{\code{orthogonal}}{Boolean which is True for orthogonal latent factors.
 Core logic for estimating factor scores from a CFA model and data sample.
+Compute McDonald's omega per latent factor.
 Fit cfa model, check if it converged and return coefficients
 Extract factor loading matrix from lavaan fit
 Extract residual covariance matrix from lavaan fit}

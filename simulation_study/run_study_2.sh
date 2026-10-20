@@ -1,40 +1,48 @@
 #!/bin/bash
-#SBATCH --job-name=study2
-#SBATCH --output=logs/output_%j.out
-#SBATCH --error=logs/errors_%j.err
-#SBATCH --mem=2000
-#SBATCH --time=4-00:00:00
+###############################################################################
+##  run_study_2.sh -- study 2 of the simulation study (power over theta, interaction, reliability and n) as a
+##  SLURM array job, one array task per cell (320 cells, 100 replicates each),
+##  run inside the pinned container rapsem.sif (R 4.6.1, rapsem 0.0.0.2000;
+##  see docker-image.nix for how it is built).
+##
+##  Usage (from the repository root, with rapsem.sif copied to simulation_study/):
+##    sbatch simulation_study/run_study_2.sh
+##  When the job has finished, check and merge the per-cell files into the
+##  result files read by the plotting scripts (fails if a cell is missing):
+##    bash simulation_study/merge_results.sh
+##
+##  Cells are listed by cells.sh and run by run_cell.sh (both shared with
+##  run_local.sh); finished cells are skipped, so failed tasks can simply be
+##  resubmitted, e.g. sbatch --array=5,17 simulation_study/run_study_2.sh
+###############################################################################
+#SBATCH --job-name=rapsem_study2
+#SBATCH --output=simulation_study/slurm_logs/study2_%A_%a.out
+#SBATCH --error=simulation_study/slurm_logs/study2_%A_%a.err
+#SBATCH --array=0-319
+#SBATCH --mem=3000
+#SBATCH --time=24:00:00
 #SBATCH --partition=cpu-single
 #SBATCH --nodes=1
+#SBATCH --cpus-per-task=1
 
-# Load R module
+set -euo pipefail
+
 module purge
-module load math/R/4.4.2
+module load system/singularity/3.11.3
 
-cd "$SLURM_SUBMIT_DIR"
+cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 
-output_file="results/study_2/study_2_results.csv"
+# rapsem.sif is a build artifact (see docker-image.nix), not committed to git
+# -- build it elsewhere (nix-build docker-image.nix; apptainer build) and copy
+# it to simulation_study/ before submitting. SingularityCE reads
+# Apptainer-built .sif files fine -- same underlying format.
+SIF="$(pwd)/simulation_study/rapsem.sif"
+export SINGULARITYENV_OPENBLAS_NUM_THREADS=1
+# --cleanenv: no host environment (e.g. R_LIBS_USER) leaks into the container
+export RSCRIPT="singularity exec --cleanenv --bind $(pwd) $SIF Rscript"
 
-add_var=1e-4
-conf=0.4
-conf_treat=0.0
-
-for num_obs in 1000; do
-  for beta_mxr in 0.102 0.145 0.176 0.204; do
-    for beta_ym in 0.41; do
-      for rel in 0.667 0.8; do
-        Rscript run_simulation.R "$add_var" "$num_obs" "$beta_mxr" "$beta_ym" "$rel" "$conf" "$conf_treat" $output_file
-      done
-    done
-  done
-done
-
-for num_obs in 1000; do
-  for beta_mxr in 0.145 0.176 0.204; do
-    for beta_ym in 0.0 0.29 0.41; do
-      for rel in 0.4 0.667 0.8; do
-        Rscript run_simulation.R "$add_var" "$num_obs" "$beta_mxr" "$beta_ym" "$rel" "$conf" "$conf_treat" $output_file
-      done
-    done
-  done
-done
+cell=$(bash simulation_study/cells.sh study_2 | sed -n "$((SLURM_ARRAY_TASK_ID + 1))p")
+echo "Task ${SLURM_ARRAY_TASK_ID} (job ${SLURM_ARRAY_JOB_ID}): $cell -- $(date)"
+# shellcheck disable=SC2086  # the cell line is split into its fields on purpose
+bash simulation_study/run_cell.sh $cell
+echo "Finished at $(date)"

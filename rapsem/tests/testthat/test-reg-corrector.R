@@ -22,3 +22,29 @@ test_that("reg_corrector calculates correct parameter estimates", {
   corrector$g_estimation(FALSE, 0, 1e-4)
   expect_equal(corr_est$parameters, expected_results$theta, tolerance = 1e-6)
 })
+
+test_that("interaction partners are found by exact name", {
+  partner <- reg_corrector$private_methods$interaction_partner
+  expect_equal(partner("T:Tc", "T"), "Tc")
+  expect_equal(partner("Tc:T", "T"), "Tc")
+  expect_equal(partner("treat:z:cov1", "treat"), "z:cov1")
+  expect_null(partner("Tc:x", "T"))
+  expect_null(partner("T", "T"))
+})
+
+test_that("reg_corrector does not modify the estimator it is given", {
+  out_est <- mock_reg_param_estimator$new()
+  before <- out_est$mat_m1
+  reg_corrector$new(
+    reg_est = out_est,
+    reg_model = mock_reg_model$new(
+      med_preds = list(med = c("intercept", "treat", "cov1", "cov1:treat")),
+      out_preds = list(out = pred_names)),
+    sample = mock_data,
+    var_names = mock_var_names_config$new(),
+    factor_scores = mock_factor_scores$new(),
+    modified_2smm = FALSE,
+    tau = 0
+  )
+  expect_equal(out_est$mat_m1, before)
+})

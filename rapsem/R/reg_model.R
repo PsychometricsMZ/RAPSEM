@@ -34,25 +34,47 @@ reg_model <- R6Class("reg_model",
       lhs_vars <- c()
       rhs_vars <- c()
       regression_info <- list()
-      known_covariates <- c()
       for (line in reg_text_lines) {
         if (private$is_regression_line(line)) {
-          parsed <- private$parse_regression_line(line, intercept_name,
-                                                  known_covariates)
+          parsed <- private$parse_regression_line(line, intercept_name)
           outcome <- parsed$outcome
           covariates <- parsed$covariates
 
           lhs_vars <- c(lhs_vars, outcome)
           rhs_vars <- c(rhs_vars, covariates)
-          known_covariates <- unique(c(known_covariates, covariates))
 
           regression_info[[outcome]] <- private$update_regression_info(
             regression_info[[outcome]], covariates
           )
         }
       }
+      # Main effects are checked per equation, after all of its lines have
+      # been collected (a model may list one term per line).
+      for (outcome in names(regression_info)) {
+        regression_info[[outcome]] <- private$add_missing_main_effects(
+          regression_info[[outcome]], outcome
+        )
+        rhs_vars <- c(rhs_vars, regression_info[[outcome]])
+      }
       output <- private$classify_variables(lhs_vars, rhs_vars, regression_info)
-      return(output)
+      output
+    },
+
+    #' Adds the components of interaction terms that are missing as main
+    #' effects in the same equation.
+    add_missing_main_effects = function(covariates, outcome) {
+      expanded <- covariates
+      for (term in covariates[grepl(":", covariates)]) {
+        for (p in unlist(strsplit(term, ":"))) {
+          if (!(p %in% expanded)) {
+            expanded <- c(expanded, p)
+            warning(paste("Main effect", p, "added as predictor",
+                          "because interaction", term, "was detected",
+                          "in outcome", outcome))
+          }
+        }
+      }
+      expanded
     },
 
     #' Determines whether a regression line specifies a zero intercept.
@@ -67,7 +89,7 @@ reg_model <- R6Class("reg_model",
 
     #' Parses a regression line into its outcome and covariates,
     #' handling the intercept and interaction terms.
-    parse_regression_line = function(line, intercept_name, known_covariates) {
+    parse_regression_line = function(line, intercept_name) {
       parts <- strsplit(line, "~")[[1]]
       outcome <- trimws(parts[1])
       covariates <- unlist(strsplit(parts[2], "\\+"))
@@ -78,31 +100,15 @@ reg_model <- R6Class("reg_model",
       } else {
         covariates <- c(intercept_name, covariates)
       }
-
-      expanded_covariates <- covariates
-      for (term in covariates) {
-        if (grepl(":", term)) {
-          parts <- unlist(strsplit(term, ":"))
-          for (p in parts) {
-            if (!(p %in% covariates) && !(p %in% known_covariates)) {
-              expanded_covariates <- c(expanded_covariates, p)
-              warning(paste("Main effect", p, "added as predictor",
-                            "because interaction", term, "was detected",
-                            "in outcome", outcome))
-            }
-          }
-        }
-      }
-      expanded_covariates <- unique(expanded_covariates)
-      list(outcome = outcome, covariates = expanded_covariates)
+      list(outcome = outcome, covariates = unique(covariates))
     },
 
     #' Updates the regression info list by merging new covariates.
     update_regression_info = function(existing, covariates) {
       if (is.null(existing)) {
-        return(covariates)
+        covariates
       } else {
-        return(unique(c(existing, covariates)))
+        unique(c(existing, covariates))
       }
     },
 
@@ -121,7 +127,7 @@ reg_model <- R6Class("reg_model",
         output$outcomes[[var]] <- regression_info[[var]]
       }
 
-      return(output)
+      output
     }
   )
 )

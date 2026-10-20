@@ -11,7 +11,11 @@ med_est(
   nboot = 100,
   modified_2smm = TRUE,
   tau = 5,
-  add_var = 1e-04
+  add_var = 1e-04,
+  orthogonal = FALSE,
+  group_lavaan = FALSE,
+  blockwise = TRUE,
+  standardize = FALSE
 )
 }
 \arguments{
@@ -26,10 +30,39 @@ med_est(
 \item{modified_2smm}{Boolean. Turns on modified 2SMM estimation.
 Default is TRUE.}
 
-\item{tau}{Numeric. Modification factor. Default is 0.}
+\item{tau}{Numeric. Modification factor of the modified 2SMM estimator
+(Wall & Amemiya, 2000). Default is 5.}
 
 \item{add_var}{Numeric. Small variance value added to improve
-stability in g-estimation. Default is 0.}
+stability in g-estimation. Default is 1e-4.}
+
+\item{orthogonal}{Boolean. Whether to fix the factor covariances to zero
+in the joint measurement model (only used if
+blockwise = FALSE; gives the same estimates as
+blockwise = TRUE). Default is FALSE.}
+
+\item{group_lavaan}{Boolean. Whether to run group lavaan.
+Default is FALSE.}
+
+\item{blockwise}{Boolean. Whether to fit the measurement model of each
+latent variable separately (default TRUE). The factor
+scores do not use factor covariances, and separate fits
+keep misspecification in one measurement block from
+affecting the others. Requires at least three indicators
+per latent variable and no residual covariances between
+indicators of different latent variables.}
+
+\item{standardize}{Boolean. Whether to report standardized coefficients
+(default FALSE). By default, factor scores and their
+error covariance are in the metric of the anchor
+indicators (first indicator of each latent variable,
+loading 1; Wall & Amemiya) and observed variables are
+only centered, like the unstandardized lavaan estimates.
+With TRUE, latent variables are scaled to variance 1
+(estimated latent standard deviation) and observed
+continuous variables to standard deviation 1; the
+treatment and binary variables stay unscaled. The
+lavaan comparison then reports the std.all solution.}
 }
 \description{
 Performs mediation estimation using standard factor

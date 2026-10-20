@@ -69,12 +69,11 @@ mock_data <- data.frame(
   intercept = rep(1, num_obs)
 )
 
-get_estimated_factor_scores <- function() {
+get_estimated_factor_scores <- function(raw = FALSE) {
   data_transposed <- mock_data[, c(2, 3, 5, 6, 8, 9, 1, 4, 7)]
   model_cfa <- mock_cfa_model$new()$lavaan_syntax
   cfa <- lavaan::cfa(model_cfa, data = data_transposed,
-                     meanstructure = TRUE, estimator = "MLR",
-                     missing = "ML", se = "none", std.lv = TRUE)
+                     meanstructure = TRUE, estimator = "ML", se = "none")
   beta0hat <- matrix(lavaan::coef(cfa)[paste0("i", c(2, 3, 5, 6, 8, 9),
                                               "~1")], 6, 1)
   beta1hat <- matrix(0, 6, 3)
@@ -101,6 +100,22 @@ get_estimated_factor_scores <- function() {
   }
   colnames(factor_scores) <- latent_names
   colnames(sigma_ee) <- rownames(sigma_ee) <- latent_names
+  if (raw) {
+    # anchor metric (before standardization) plus the CFA parameters,
+    # indicators ordered as (free, fixed)
+    return(list(factor_scores = factor_scores, sigma_ee = sigma_ee,
+                z = as.matrix(data_transposed), beta0hat = beta0hat,
+                beta1hat = beta1hat, psihat = psihat))
+  }
+
+  # latent-standardized metric: center, divide by the estimated latent SD
+  # sqrt(var(score) - sigma_ee) and rescale sigma_ee accordingly
+  latent_sd <- sqrt(apply(factor_scores, 2, var) - diag(sigma_ee))
+  for (j in seq_len(ncol(factor_scores))) {
+    factor_scores[, j] <- (factor_scores[, j] - mean(factor_scores[, j])) /
+      latent_sd[j]
+  }
+  sigma_ee <- sigma_ee / (latent_sd %o% latent_sd)
   return(list(factor_scores = factor_scores, sigma_ee = sigma_ee))
 }
 
@@ -115,9 +130,11 @@ mock_factor_scores <- R6::R6Class("factor_score_estimator", public = list(
 ))
 
 r0 <- mock_data[, "treat"]
-x1 <- scale(latent_vars[, "cov1"])[, 1]
-m  <- scale(latent_vars[, "med"])[, 1]
-y  <- scale(latent_vars[, "out"])[, 1]
+# factor-score columns are only centered by reg_param_estimator (they are
+# already in the metric of their error covariance)
+x1 <- latent_vars[, "cov1"] - mean(latent_vars[, "cov1"])
+m  <- latent_vars[, "med"] - mean(latent_vars[, "med"])
+y  <- latent_vars[, "out"] - mean(latent_vars[, "out"])
 sigma <- latent_cov
 preds <- cbind(
   intercept = mock_data[, "intercept"],
@@ -198,10 +215,12 @@ get_regression_parameters <- function() {
 
   vec_out <- vec_out_m1 + vec_out_m2
 
-  theta <- setNames(as.numeric(solve(mat_out, vec_out)), pred_names)
+  result <- MASS::ginv(mat_out) %*% vec_out
+  theta <- setNames(result, pred_names)
 
   list(theta = theta, mat_m1 = mat_out_m1, mat_m2 = mat_out_m2,
-       vec_m1 = vec_out_m1, vec_m2 = vec_out_m2)
+       vec_m1 = vec_out_m1, vec_m2 = vec_out_m2,
+       sensitivity_param = kappa(mat_out, exact = TRUE))
 }
 reg_results <- get_regression_parameters()
 
@@ -213,6 +232,7 @@ mock_reg_param_estimator <- R6::R6Class("reg_param_estimator", public = list(
   vec_m1 = reg_results$vec_m1,
   vec_m2 = reg_results$vec_m2,
   parameters = NULL,
+  sensitivity_param = reg_results$sensitivity_param,
   regress = function(modified_2smm, tau, add_var = 0) {
     corr_mat <- self$mat_m1 + self$mat_m2
     corr_mat <- corr_mat + diag(add_var, nrow(corr_mat), ncol(corr_mat))

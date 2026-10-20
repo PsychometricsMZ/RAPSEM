@@ -127,7 +127,7 @@ test_that("data_loader throws error when treatment columns are not binary", {
   )
   expect_error(
     data_loader$new(df, c("treat1", "treat2")),
-    paste("Treatment columns must contain only 0 or 1.",
+    paste("Treatment columns must contain exactly two distinct values.",
           "Invalid columns: treat1, treat2")
   )
 })
